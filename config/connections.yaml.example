@@ -1,0 +1,62 @@
+# Data Quality Monitor - Database Connections Configuration
+# Copy to config/connections.yaml and customize for your environment
+# 
+# Environment variables can be used with ${VAR_NAME} syntax
+# Make sure to set these before running:
+#   export DB_PASSWORD="your_password"
+#   export POSTGRES_PASSWORD="your_password"
+
+connections:
+  # ===========================================================================
+  # SQL Server connections
+  # ===========================================================================
+  
+  # SQL Server with Windows Authentication (Trusted Connection)
+  sqlserver_prod:
+    type: sqlserver
+    host: sql-prod.company.local
+    port: 1433
+    database: production_db
+    trusted_connection: true
+    timeout: 30
+    # For ODBC Driver 18, you may need:
+    # encrypt: yes
+    # trust_server_certificate: yes
+  
+  # SQL Server with SQL Authentication
+  sqlserver_dev:
+    type: sqlserver
+    host: localhost
+    port: 1433
+    database: dev_db
+    trusted_connection: false
+    username: sa
+    password: ${DB_PASSWORD}
+    timeout: 30
+  
+  # ===========================================================================
+  # PostgreSQL connections
+  # ===========================================================================
+  
+  # postgres_analytics:
+  #   type: postgres
+  #   host: postgres.company.local
+  #   port: 5432
+  #   database: analytics
+  #   username: readonly_user
+  #   password: ${POSTGRES_PASSWORD}
+  
+  # ===========================================================================
+  # SQLite connections (for testing and demos)
+  # ===========================================================================
+  
+  # In-memory database (useful for testing)
+  sqlite_memory:
+    type: sqlite
+    path: ':memory:'
+  
+  # File-based SQLite
+  sqlite_test:
+    type: sqlite
+    path: ./sample_data/test.db
+    timeout: 30

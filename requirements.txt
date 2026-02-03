@@ -1,0 +1,39 @@
+# Core dependencies
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Database connectors
+pyodbc>=5.0.0          # SQL Server
+psycopg2-binary>=2.9.0  # PostgreSQL
+sqlalchemy>=2.0.0       # ORM and connection pooling
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Statistical analysis
+scipy>=1.11.0
+
+# Notifications
+requests>=2.31.0        # Slack webhooks
+
+# CLI
+click>=8.1.0
+rich>=13.0.0            # Pretty console output
+
+# Scheduling
+schedule>=1.2.0
+apscheduler>=3.10.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Development
+black>=23.0.0
+flake8>=6.1.0
+mypy>=1.5.0
+
+# Optional: Dashboard
+# streamlit>=1.28.0
+# plotly>=5.18.0

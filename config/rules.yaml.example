@@ -1,0 +1,216 @@
+# Data Quality Monitor - Example Rules Configuration
+# Copy to config/rules.yaml and customize for your environment
+
+# Global settings
+settings:
+  stop_on_critical: false      # Stop execution on critical failure
+  sample_size: 5               # Number of sample records to include
+  parallel_execution: true     # Run rules in parallel
+  max_workers: 4               # Number of parallel workers
+  output_dir: reports          # Directory for output files
+
+# Notification settings (optional)
+notifications:
+  email:
+    enabled: false
+    smtp_server: smtp.company.com
+    smtp_port: 587
+    username: ${SMTP_USER}
+    password: ${SMTP_PASSWORD}
+    from_address: dq-monitor@company.com
+    recipients:
+      - data-team@company.com
+    on_severity:
+      - critical
+      - high
+  slack:
+    enabled: false
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    channel: "#data-quality-alerts"
+
+# Validation rules
+rules:
+  # ============================================================================
+  # COMPLETENESS CHECKS
+  # Ensure required fields are populated
+  # ============================================================================
+  
+  - name: clients_required_fields
+    table: clients
+    type: completeness
+    columns:
+      - first_name
+      - last_name
+      - date_of_birth
+    severity: high
+    description: "Core client identification fields must be populated"
+    check_empty_strings: true
+    check_whitespace: true
+  
+  - name: services_required_fields
+    table: services
+    type: completeness
+    columns:
+      - client_id
+      - service_date
+      - service_type
+    severity: critical
+    description: "Service records must have client linkage and basic info"
+  
+  # ============================================================================
+  # REFERENTIAL INTEGRITY
+  # Ensure foreign key relationships are valid
+  # ============================================================================
+  
+  - name: services_valid_client
+    table: services
+    type: referential_integrity
+    column: client_id
+    reference_table: clients
+    reference_column: client_id
+    severity: critical
+    description: "All services must link to valid client records"
+    allow_null: false
+  
+  - name: staff_valid_organization
+    table: staff
+    type: referential_integrity
+    column: organization_id
+    reference_table: organizations
+    reference_column: org_id
+    severity: high
+    description: "Staff must belong to valid organizations"
+  
+  # ============================================================================
+  # DUPLICATE DETECTION
+  # Find potential duplicate records
+  # ============================================================================
+  
+  - name: no_duplicate_clients
+    table: clients
+    type: duplicates
+    columns:
+      - first_name
+      - last_name
+      - date_of_birth
+    severity: high
+    description: "Potential duplicate clients based on name and DOB"
+    case_sensitive: false
+    ignore_null: true
+  
+  - name: no_duplicate_services
+    table: services
+    type: duplicates
+    columns:
+      - client_id
+      - service_date
+      - service_type
+    severity: medium
+    description: "Potential duplicate service entries"
+  
+  # ============================================================================
+  # RANGE VALIDATION
+  # Check numeric values are within acceptable bounds
+  # ============================================================================
+  
+  - name: valid_service_hours
+    table: services
+    type: range
+    column: hours
+    min: 0
+    max: 24
+    severity: medium
+    description: "Service hours must be between 0 and 24"
+  
+  - name: positive_costs
+    table: services
+    type: range
+    column: cost
+    min: 0
+    severity: medium
+    description: "Service costs cannot be negative"
+  
+  # ============================================================================
+  # PATTERN VALIDATION
+  # Check string formats match expected patterns
+  # ============================================================================
+  
+  - name: valid_postal_code
+    table: clients
+    type: pattern
+    column: postal_code
+    pattern: "^[A-Za-z]\\d[A-Za-z] ?\\d[A-Za-z]\\d$"
+    severity: low
+    description: "Canadian postal code format validation"
+    match_null: true
+  
+  - name: valid_phone_format
+    table: clients
+    type: pattern
+    column: phone
+    pattern: "^\\(?\\d{3}\\)?[-. ]?\\d{3}[-. ]?\\d{4}$"
+    severity: low
+    description: "Phone number format validation"
+  
+  # ============================================================================
+  # OUTLIER DETECTION
+  # Find statistical anomalies
+  # ============================================================================
+  
+  - name: cost_outliers
+    table: services
+    type: outliers
+    column: cost
+    method: zscore
+    threshold: 3
+    severity: medium
+    description: "Service costs significantly outside normal range"
+  
+  - name: hours_outliers
+    table: services
+    type: outliers
+    column: hours
+    method: iqr
+    threshold: 1.5
+    severity: low
+    description: "Service hours outside interquartile range"
+  
+  # ============================================================================
+  # CUSTOM SQL CHECKS
+  # Complex business rules expressed in SQL
+  # ============================================================================
+  
+  - name: active_clients_recent_services
+    type: custom_sql
+    severity: medium
+    description: "Active clients should have services in last 6 months"
+    query: |
+      SELECT c.client_id, c.first_name, c.last_name, c.status
+      FROM clients c
+      WHERE c.status = 'active'
+        AND c.client_id NOT IN (
+          SELECT DISTINCT client_id 
+          FROM services 
+          WHERE service_date >= DATEADD(month, -6, GETDATE())
+        )
+  
+  - name: future_service_dates
+    type: custom_sql
+    severity: high
+    description: "Service dates should not be in the future"
+    query: |
+      SELECT service_id, client_id, service_date, service_type
+      FROM services
+      WHERE service_date > GETDATE()
+  
+  - name: orphan_notes
+    type: custom_sql
+    severity: medium
+    description: "Notes must link to valid clients or services"
+    query: |
+      SELECT n.note_id, n.client_id, n.service_id
+      FROM notes n
+      LEFT JOIN clients c ON n.client_id = c.client_id
+      LEFT JOIN services s ON n.service_id = s.service_id
+      WHERE (n.client_id IS NOT NULL AND c.client_id IS NULL)
+         OR (n.service_id IS NOT NULL AND s.service_id IS NULL)

@@ -1,0 +1,155 @@
+# Sample Data Quality Rules
+# Use with: python -m src.main --config config/sample_rules.yaml
+
+settings:
+  stop_on_critical: false
+  sample_size: 5
+  parallel_execution: false
+  output_dir: reports
+
+connections:
+  sample_db:
+    type: sqlite
+    path: ./sample_data/test.db
+
+rules:
+  # ============================================
+  # COMPLETENESS CHECKS
+  # ============================================
+  
+  - name: clients_required_fields
+    table: clients
+    type: completeness
+    columns: [first_name, last_name, date_of_birth]
+    severity: high
+    description: "Core client identification fields must be populated"
+    
+  - name: clients_contact_info
+    table: clients
+    type: completeness
+    columns: [email]
+    severity: medium
+    description: "Client email should be populated for communication"
+    
+  - name: staff_email_required
+    table: staff
+    type: completeness
+    columns: [email]
+    severity: high
+    description: "All staff must have email addresses"
+  
+  # ============================================
+  # REFERENTIAL INTEGRITY
+  # ============================================
+  
+  - name: services_valid_client
+    table: services
+    type: referential_integrity
+    column: client_id
+    reference_table: clients
+    reference_column: client_id
+    severity: critical
+    description: "All services must link to valid clients"
+    
+  - name: services_valid_program
+    table: services
+    type: referential_integrity
+    column: program_id
+    reference_table: programs
+    reference_column: program_id
+    severity: critical
+    description: "All services must link to valid programs"
+  
+  # ============================================
+  # DUPLICATES
+  # ============================================
+  
+  - name: no_duplicate_clients
+    table: clients
+    type: duplicates
+    columns: [first_name, last_name, date_of_birth]
+    severity: high
+    case_sensitive: false
+    description: "Prevent duplicate client entries based on name and DOB"
+  
+  # ============================================
+  # RANGE VALIDATION
+  # ============================================
+  
+  - name: valid_service_hours
+    table: services
+    type: range
+    column: hours
+    min: 0
+    max: 24
+    severity: medium
+    description: "Service hours must be between 0 and 24"
+    
+  - name: positive_service_cost
+    table: services
+    type: range
+    column: cost
+    min: 0
+    severity: medium
+    description: "Service cost cannot be negative"
+  
+  # ============================================
+  # PATTERN MATCHING
+  # ============================================
+  
+  - name: valid_postal_code
+    table: clients
+    type: pattern
+    column: postal_code
+    pattern: "^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$"
+    severity: low
+    description: "Canadian postal code format (e.g., R3A 1B2)"
+  
+  # ============================================
+  # OUTLIER DETECTION
+  # ============================================
+  
+  - name: service_cost_outliers
+    table: services
+    type: outliers
+    column: cost
+    method: zscore
+    threshold: 3
+    severity: medium
+    description: "Flag unusually high or low service costs"
+    
+  - name: staff_salary_outliers
+    table: staff
+    type: outliers
+    column: salary
+    method: iqr
+    threshold: 1.5
+    severity: medium
+    description: "Flag unusual staff salaries"
+  
+  # ============================================
+  # CUSTOM SQL CHECKS
+  # ============================================
+  
+  - name: programs_valid_dates
+    type: custom_sql
+    severity: high
+    description: "Program end date must be after start date"
+    query: |
+      SELECT program_id, program_name, start_date, end_date
+      FROM programs
+      WHERE end_date < start_date
+      
+  - name: active_clients_recent_services
+    type: custom_sql
+    severity: low
+    description: "Active clients should have services in last 180 days"
+    query: |
+      SELECT c.client_id, c.first_name, c.last_name, c.status
+      FROM clients c
+      WHERE c.status = 'active'
+        AND c.client_id NOT IN (
+          SELECT DISTINCT client_id 
+          FROM services 
+          WHERE service_date >= date('now', '-180 days')
+        )
