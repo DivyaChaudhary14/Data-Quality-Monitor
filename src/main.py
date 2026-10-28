@@ -97,10 +97,25 @@ Examples:
         
         # Create rule engine
         engine = RuleEngine(config, args.connection)
-        
+
+        # Narrow to the rules named with --rules, if any
+        selected_rules = None
+        if args.rules:
+            wanted = set(args.rules)
+            selected_rules = [r for r in config.get_rules() if r['name'] in wanted]
+            unknown = wanted - {r['name'] for r in selected_rules}
+            if unknown:
+                print(f"Unknown rule name(s): {', '.join(sorted(unknown))}", file=sys.stderr)
+                return 1
+
         # Dry run - just show rules
         if args.dry_run:
             rules = engine.dry_run()
+            if args.rules:
+                rules = [r for r in rules if r['name'] in set(args.rules)]
+            if args.severity:
+                severities = {s.lower() for s in args.severity}
+                rules = [r for r in rules if r['severity'].lower() in severities]
             print(f"\nWould execute {len(rules)} rules:\n")
             for rule in rules:
                 print(f"  [{rule['severity'].upper():8}] {rule['name']}")
@@ -124,7 +139,7 @@ Examples:
             print()
         
         # Run validation
-        report = engine.run(severity_filter=args.severity)
+        report = engine.run(rules=selected_rules, severity_filter=args.severity)
         
         if not args.quiet:
             print("\r" + " " * 60 + "\r", end='')  # Clear progress line

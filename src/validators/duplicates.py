@@ -50,6 +50,10 @@ class DuplicatesValidator(BaseValidator):
                 col_expressions.append(f'LOWER({self._quote_identifier(col)})')
         
         col_list = ', '.join(col_expressions)
+        # The CTE must expose each column under its own name so the join can reference dg.<column>
+        cte_cols = ', '.join(
+            f'{expr} AS {self._quote_identifier(col)}' for expr, col in zip(col_expressions, columns)
+        )
         quoted_cols = ', '.join(self._quote_identifier(col) for col in columns)
         
         # Build NULL exclusion if needed
@@ -82,7 +86,7 @@ class DuplicatesValidator(BaseValidator):
         # Get actual duplicate records with group info
         records_query = f"""
             WITH DuplicateGroups AS (
-                SELECT {col_list}, COUNT(*) as dup_count
+                SELECT {cte_cols}, COUNT(*) as dup_count
                 FROM {self._quote_identifier(table)}
                 {null_conditions}
                 GROUP BY {col_list}

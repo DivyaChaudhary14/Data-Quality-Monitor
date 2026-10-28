@@ -1,36 +1,79 @@
 # Data Quality Monitor
 
-A configurable, database-agnostic data quality monitoring framework that automates validation checks, detects anomalies, and generates alerts.
+A rule-based data quality framework for SQL databases. You describe quality rules in YAML, it runs them against your database, and you get a severity-ranked report with sample failing records. Reports print to the console and save as JSON, ready to load into Power BI or Excel.
 
-Built to solve real operational problems: reducing manual data review, catching integrity issues before they impact reporting, and providing audit trails for data governance.
-
----
-
-## Features
-
-- **Rule-based validation** — Define quality rules in YAML, no code changes required
-- **Multi-database support** — SQL Server, PostgreSQL, SQLite, CSV files
-- **15+ built-in validators** — Completeness, referential integrity, duplicates, outliers, patterns, and more
-- **Automated alerting** — Email, Slack, or custom webhook notifications
-- **Dashboard-ready output** — Export results for Power BI, Tableau, or built-in Streamlit dashboard
-- **Scheduling** — Built-in scheduler or integrate with cron/Task Scheduler
-- **Detailed logging** — Full audit trail for compliance and debugging
+I built it from the checks I run as a database administrator and analyst on a privacy-regulated, multi-organization database: catch missing fields, orphan records, duplicates and outliers *before* they reach a report, and keep an audit trail of what was checked and when.
 
 ---
 
-## Quick Start
+## What it does
 
-### Installation
+- **Rules in YAML, no code changes.** Add or change a check by editing a config file.
+- **8 rule types:** completeness, referential integrity, duplicates, uniqueness, range, regex pattern, statistical outliers (z-score / IQR) and custom SQL.
+- **SQL Server and SQLite connectors.** SQL Server is the production target (Windows or SQL authentication via ODBC). SQLite runs the self-contained demo and the tests.
+- **Severity levels** (critical, high, medium, low) with optional stop-on-critical.
+- **Reports:** a console summary plus JSON output (`dq_report_*.json`, `dq_summary_*.json` and a running `dq_history.jsonl`) for dashboards and trend tracking.
+- **CLI filters:** run by severity or by rule name, preview with `--dry-run`.
+
+---
+
+## Quick start (demo, no database server needed)
 
 ```bash
-git clone https://github.com/yourusername/data-quality-monitor.git
-cd data-quality-monitor
+git clone https://github.com/DivyaChaudhary14/Data-Quality-Monitor.git
+cd Data-Quality-Monitor
 pip install -r requirements.txt
+
+# Build a sample database with deliberately seeded data problems
+python sample_data/create_sample_db.py
+
+# Run all 13 sample rules and save JSON reports
+python -m src.main --config config/sample_rules.yaml --output reports/
 ```
 
-### Basic Usage
+Real output from the demo (excerpt):
 
-**Step 1:** Configure your database connection in `config/connections.yaml`
+```
+DATA QUALITY REPORT
+================================================================================
+Connection: sample_db
+Rules executed: 13
+Duration: 0.04 seconds
+
+SUMMARY
+----------------------------------------
+Passed: 3
+Failed: 10
+  - CRITICAL: 1
+  - HIGH: 3
+  - MEDIUM: 4
+  - LOW: 2
+
+FAILED RULES
+----------------------------------------
+[CRITICAL] services_valid_client
+  Table: services
+  Violations: 2 records
+  Sample IDs: 9999, 9998
+
+[HIGH] no_duplicate_clients
+  Table: clients
+  Violations: 1 records
+  Sample IDs: 201, 202
+
+[MEDIUM] service_cost_outliers
+  Table: services
+  Violations: 15 records
+  Sample IDs: 44, 79, 60, 23, 116
+```
+
+Every failure above is a problem the sample data generator plants on purpose, so the demo shows each rule type catching something.
+
+---
+
+## Using it on your own database
+
+**1. Connections** (`config/connections.yaml`, copied from `connections.yaml.example`):
 
 ```yaml
 connections:
@@ -38,173 +81,19 @@ connections:
     type: sqlserver
     host: localhost
     database: your_database
-    trusted_connection: true
+    trusted_connection: true      # or username/password via ${ENV_VARS}
 ```
 
-**Step 2:** Define validation rules in `config/rules.yaml`
+**2. Rules** (`config/rules.yaml`, copied from `rules.yaml.example`):
 
 ```yaml
 rules:
-  - name: customers_email_required
-    table: customers
-    type: completeness
-    columns: [email]
-    severity: high
-
-  - name: orders_valid_customer
-    table: orders
-    type: referential_integrity
-    column: customer_id
-    reference_table: customers
-    reference_column: id
-    severity: critical
-```
-
-**Step 3:** Run validation
-
-```bash
-python -m src.main --config config/rules.yaml --connection production_db
-```
-
----
-
-## Sample Output
-
-```
-================================================================================
-DATA QUALITY REPORT - 2025-02-03 14:30:00
-================================================================================
-
-Connection: production_db
-Rules executed: 12
-Duration: 4.2 seconds
-
-SUMMARY
--------
-✓ Passed: 9
-✗ Failed: 3
-  - CRITICAL: 1
-  - HIGH: 1
-  - MEDIUM: 1
-
-FAILED RULES
-------------
-[CRITICAL] orders_valid_customer
-  Table: orders
-  Issue: 23 records with invalid customer_id references
-
-[HIGH] customers_email_required
-  Table: customers
-  Issue: 156 records with NULL email
-  Sample IDs: 1042, 1089, 1156, 1203, 1287
-
-[MEDIUM] products_price_outliers
-  Table: products
-  Issue: 4 records with price > 3 standard deviations from mean
-
-Full report saved to: reports/dq_report_20250203_143000.json
-```
-
----
-
-## Validation Types
-
-| Type                    | Description                      | Example Use Case       |
-| ----------------------- | -------------------------------- | ---------------------- |
-| `completeness`          | Check for NULL or empty values   | Required fields        |
-| `referential_integrity` | Verify foreign key relationships | Order-customer linkage |
-| `duplicates`            | Find duplicate records           | Prevent double-entry   |
-| `uniqueness`            | Ensure column uniqueness         | Email, SSN validation  |
-| `range`                 | Check numeric bounds             | Age 0-120, price > 0   |
-| `pattern`               | Regex pattern matching           | Phone, postal codes    |
-| `outliers`              | Statistical anomaly detection    | Price spikes           |
-| `custom_sql`            | Your own validation query        | Complex business rules |
-
----
-
-## Project Structure
-
-```
-data-quality-monitor/
-├── README.md
-├── requirements.txt
-├── LICENSE
-├── config/
-│   ├── connections.yaml.example
-│   ├── rules.yaml.example
-│   └── sample_rules.yaml
-├── src/
-│   ├── main.py              # CLI entry point
-│   ├── config_loader.py     # YAML parsing
-│   ├── rule_engine.py       # Orchestration
-│   ├── validators/          # Validation logic
-│   │   ├── completeness.py
-│   │   ├── referential.py
-│   │   ├── duplicates.py
-│   │   ├── range_check.py
-│   │   ├── pattern.py
-│   │   ├── outliers.py
-│   │   └── custom_sql.py
-│   ├── connectors/          # Database connections
-│   │   ├── sqlserver.py
-│   │   └── sqlite.py
-│   └── reporters/           # Output formatting
-│       ├── console.py
-│       └── json_report.py
-├── tests/
-│   └── test_validators.py
-├── docs/
-│   └── architecture.md
-└── sample_data/
-    └── create_sample_db.py
-```
-
----
-
-## Configuration Examples
-
-### Database Connections
-
-```yaml
-connections:
-  # SQL Server with Windows Auth
-  sqlserver_prod:
-    type: sqlserver
-    host: server.domain.com
-    database: production
-    trusted_connection: true
-
-  # SQL Server with credentials
-  sqlserver_dev:
-    type: sqlserver
-    host: localhost
-    database: development
-    username: ${DB_USER}
-    password: ${DB_PASSWORD}
-
-  # SQLite for testing
-  local_test:
-    type: sqlite
-    path: ./sample_data/test.db
-```
-
-### Validation Rules
-
-```yaml
-settings:
-  stop_on_critical: false
-  sample_size: 5
-  parallel_execution: true
-
-rules:
-  # Check required fields
   - name: client_required_fields
     table: clients
     type: completeness
     columns: [first_name, last_name, date_of_birth]
     severity: high
 
-  # Verify foreign keys
   - name: services_valid_client
     table: services
     type: referential_integrity
@@ -213,23 +102,13 @@ rules:
     reference_column: client_id
     severity: critical
 
-  # Detect duplicates
   - name: no_duplicate_clients
     table: clients
     type: duplicates
     columns: [first_name, last_name, date_of_birth]
+    case_sensitive: false
     severity: high
 
-  # Validate ranges
-  - name: valid_service_hours
-    table: services
-    type: range
-    column: hours
-    min: 0
-    max: 24
-    severity: medium
-
-  # Statistical outliers
   - name: cost_outliers
     table: services
     type: outliers
@@ -238,56 +117,97 @@ rules:
     threshold: 3
     severity: medium
 
-  # Custom business logic
-  - name: active_clients_have_services
+  - name: active_clients_have_recent_services
     type: custom_sql
     severity: medium
     query: |
-      SELECT c.client_id, c.first_name, c.last_name
+      SELECT c.client_id
       FROM clients c
       WHERE c.status = 'active'
         AND c.client_id NOT IN (
-          SELECT DISTINCT client_id
-          FROM services
+          SELECT client_id FROM services
           WHERE service_date >= DATEADD(month, -6, GETDATE())
         )
 ```
 
----
-
-## CLI Options
+**3. Run:**
 
 ```bash
-# Run all rules
-python -m src.main --config config/rules.yaml
+python -m src.main --config config/rules.yaml --connections config/connections.yaml --connection production_db --output reports/
+```
 
-# Run only critical rules
-python -m src.main --config config/rules.yaml --severity critical
+To run it on a schedule, call the same command from Windows Task Scheduler, SQL Server Agent or cron.
 
-# Dry run (preview without executing)
-python -m src.main --config config/rules.yaml --dry-run
+---
 
-# Save report to file
-python -m src.main --config config/rules.yaml --output reports/
+## Rule types
 
-# Specify connection
-python -m src.main --config config/rules.yaml --connection prod_db
+| Type | Checks for | Example |
+|---|---|---|
+| `completeness` | NULL or empty values | Required client fields |
+| `referential_integrity` | Foreign keys with no parent row | Services pointing at deleted clients |
+| `duplicates` | Repeated records across one or more columns | The same client entered twice |
+| `uniqueness` | Repeated values in one column | Duplicate IDs |
+| `range` | Numbers outside min/max bounds | Service hours between 0 and 24 |
+| `pattern` | Values not matching a regex | Postal code format |
+| `outliers` | Statistical anomalies (z-score or IQR) | Cost spikes |
+| `custom_sql` | Any rows your own query returns | Business rules |
+
+On SQL Server, `pattern` translates simple regexes to `LIKE` or `PATINDEX`, which cover a subset of regex. SQLite supports full Python regex.
+
+---
+
+## CLI options
+
+```bash
+python -m src.main --config config/rules.yaml                       # run all rules
+python -m src.main --config config/rules.yaml --severity critical   # only critical rules
+python -m src.main --config config/rules.yaml --rules no_duplicate_clients
+python -m src.main --config config/rules.yaml --dry-run             # list rules without running
+python -m src.main --config config/rules.yaml --output reports/     # save JSON reports
+python -m src.main --config config/rules.yaml --quiet               # file output only
 ```
 
 ---
 
-## Demo
+## Tests
 
 ```bash
-# Generate test database with sample data
-python sample_data/create_sample_db.py
-
-# Run validation
-python -m src.main --config config/sample_rules.yaml
+pytest -v
 ```
+
+The suite builds a temporary SQLite database with known problems and checks that each validator finds them.
+
+---
+
+## Project structure
+
+```
+src/
+├── main.py             # CLI entry point
+├── config_loader.py    # YAML loading and validation
+├── rule_engine.py      # Runs rules, aggregates results
+├── validators/         # One module per rule type
+├── connectors/         # SQL Server (pyodbc) and SQLite
+└── reporters/          # Console and JSON output
+config/                 # Example connections, rules and sample rules
+sample_data/            # Demo database generator
+tests/                  # pytest suite
+docs/architecture.md    # Design notes
+```
+
+---
+
+## Roadmap
+
+These are planned and not built yet:
+
+- PostgreSQL connector
+- Email and Slack alerts for critical failures (`notifications` settings in `rules.yaml.example` are ignored for now)
+- A ready-made Power BI report over the JSON history
 
 ---
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License. See `LICENSE`.

@@ -77,6 +77,17 @@ class PatternValidator(BaseValidator):
         quoted_col = self._quote_identifier(column)
         quoted_table = self._quote_identifier(table)
         
+        # SQLite gets a REGEXP function from its connector, so it can match full regex
+        if getattr(self.connector, 'connector_type', None) == 'sqlite':
+            try:
+                return self._validate_sqlite(quoted_table, quoted_col, pattern, match_null, inverse, rule)
+            except Exception as e:
+                return self._build_result(
+                    rule=rule,
+                    passed=False,
+                    error_message=f"Pattern validation failed: {str(e)}"
+                )
+        
         # Different databases have different regex syntax
         # We'll try SQL Server syntax first, then adapt
         try:
@@ -187,6 +198,54 @@ class PatternValidator(BaseValidator):
                 'match_null': match_null,
                 'inverse': inverse,
                 'pattern_type': 'like' if simple_pattern else 'patindex'
+            }
+        )
+    
+    def _validate_sqlite(
+        self,
+        table: str,
+        column: str,
+        pattern: str,
+        match_null: bool,
+        inverse: bool,
+        rule: dict
+    ) -> ValidationResult:
+        """Validate using the REGEXP function the SQLite connector registers."""
+        # Pass the pattern as a parameter: the connector rewrites [brackets] in query text
+        match_condition = f"{column} REGEXP :pattern" if inverse else f"NOT ({column} REGEXP :pattern)"
+        params = {'pattern': pattern}
+        
+        query = f"""
+            SELECT *
+            FROM {table}
+            WHERE {column} IS NOT NULL
+              AND {match_condition}
+        """
+        count_query = f"""
+            SELECT COUNT(*) as violation_count
+            FROM {table}
+            WHERE {column} IS NOT NULL
+              AND {match_condition}
+        """
+        
+        count_result = self.connector.execute_query(count_query, params)
+        violation_count = count_result[0]['violation_count'] if count_result else 0
+        
+        sample_records = []
+        if violation_count > 0:
+            sample_records = self.connector.execute_query(f"{query} LIMIT {self.sample_size}", params)
+        
+        return self._build_result(
+            rule=rule,
+            passed=violation_count == 0,
+            violation_count=violation_count,
+            sample_records=self._serialize_records(sample_records),
+            query=query.strip(),
+            metadata={
+                'pattern': pattern,
+                'match_null': match_null,
+                'inverse': inverse,
+                'pattern_type': 'regex'
             }
         )
     

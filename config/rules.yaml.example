@@ -9,7 +9,8 @@ settings:
   max_workers: 4               # Number of parallel workers
   output_dir: reports          # Directory for output files
 
-# Notification settings (optional)
+# Notification settings - NOT IMPLEMENTED YET (planned; see README Roadmap).
+# The keys below are ignored by the current version.
 notifications:
   email:
     enabled: false

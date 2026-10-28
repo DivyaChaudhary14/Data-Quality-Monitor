@@ -5,11 +5,38 @@ SQLite is useful for local development, testing, and demos without
 requiring a full database server setup.
 """
 
+import math
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from src.connectors.base import BaseConnector, ConnectionError, QueryError
+
+
+class _SampleStdev:
+    """STDEV aggregate (sample standard deviation), matching SQL Server's STDEV."""
+
+    def __init__(self):
+        self.values = []
+
+    def step(self, value):
+        if value is not None:
+            self.values.append(float(value))
+
+    def finalize(self):
+        n = len(self.values)
+        if n < 2:
+            return None
+        mean = sum(self.values) / n
+        return math.sqrt(sum((v - mean) ** 2 for v in self.values) / (n - 1))
+
+
+def _regexp(pattern, value):
+    """Backs SQLite's `value REGEXP pattern` operator."""
+    if value is None:
+        return None
+    return re.search(pattern, str(value)) is not None
 
 
 class SQLiteConnector(BaseConnector):
@@ -53,6 +80,10 @@ class SQLiteConnector(BaseConnector):
             
             # Enable foreign keys
             self._connection.execute("PRAGMA foreign_keys = ON")
+            
+            # SQLite lacks STDEV and REGEXP, which the outlier and pattern validators use
+            self._connection.create_aggregate("STDEV", 1, _SampleStdev)
+            self._connection.create_function("REGEXP", 2, _regexp, deterministic=True)
             
             # Return rows as sqlite3.Row for dict-like access
             self._connection.row_factory = sqlite3.Row

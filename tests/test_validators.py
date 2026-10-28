@@ -16,6 +16,7 @@ from src.validators import (
     DuplicatesValidator,
     RangeValidator,
     OutliersValidator,
+    PatternValidator,
     CustomSQLValidator,
     Severity
 )
@@ -154,6 +155,24 @@ class TestDuplicatesValidator:
         
         assert result.failed
         assert result.violation_count >= 1  # Alice with age 30 appears twice
+    
+    def test_case_insensitive_duplicates(self, connector):
+        # Regression: the CTE built from LOWER(...) expressions had no column names to join on
+        validator = DuplicatesValidator(connector, {'sample_size': 5})
+        rule = {
+            'name': 'test_no_duplicates_ci',
+            'type': 'duplicates',
+            'table': 'customers',
+            'columns': ['name', 'age'],
+            'case_sensitive': False,
+            'severity': 'high'
+        }
+        
+        result = validator.validate(rule)
+        
+        assert result.error_message is None
+        assert result.violation_count == 1
+        assert result.sample_records
 
 
 class TestRangeValidator:
@@ -195,8 +214,29 @@ class TestOutliersValidator:
         result = validator.validate(rule)
         
         # Frank's score of 999 should be detected as outlier
+        assert result.error_message is None  # needs the STDEV aggregate registered on SQLite
         assert result.failed
         assert result.violation_count >= 1
+
+
+class TestPatternValidator:
+    """Tests for regex pattern validation on SQLite."""
+    
+    def test_detects_pattern_mismatch(self, connector):
+        validator = PatternValidator(connector, {'sample_size': 5})
+        rule = {
+            'name': 'test_email_format',
+            'type': 'pattern',
+            'table': 'customers',
+            'column': 'email',
+            'pattern': r'^[a-z]+@test\.com$',
+            'severity': 'low'
+        }
+        
+        result = validator.validate(rule)
+        
+        assert result.error_message is None
+        assert result.violation_count == 1  # alice2@test.com has a digit
 
 
 class TestCustomSQLValidator:
