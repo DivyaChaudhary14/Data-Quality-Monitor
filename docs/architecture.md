@@ -32,9 +32,9 @@ The Data Quality Monitor follows a modular, extensible architecture that separat
 │  (src/validators/)  │          │     (src/connectors/)      │
 │                     │          │                            │
 │  • Completeness     │◄────────►│  • SQL Server              │
-│  • Referential      │          │  • PostgreSQL              │
+│  • Referential      │          │  • (PostgreSQL: planned)   │
 │  • Duplicates       │          │  • SQLite                  │
-│  • Range            │          │  • CSV                     │
+│  • Range            │          │                            │
 │  • Pattern          │          │                            │
 │  • Outliers         │          │                            │
 │  • Custom SQL       │          │                            │
